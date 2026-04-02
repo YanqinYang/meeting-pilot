@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Meeting Copilot - 完整版 | 智能会议助手</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #1f2937;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid #3b82f6;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .listening-active {
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .delete-btn {
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .history-item:hover .delete-btn {
+            opacity: 1;
+        }
+        .product-thinking {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+        }
+        .insight-card {
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .insight-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="inline-block bg-gradient-to-r from-blue-500 to-purple-500 text-white px-4 py-1 rounded-full text-sm mb-3">🎙️ 实时语音识别 | 完全免费</div>
+            <h1 class="text-3xl font-bold text-gray-900">AI Meeting Copilot</h1>
+            <p class="text-gray-600 mt-2">智能会议助手 - 实时语音转文字 + AI智能分析 + 历史记录管理</p>
+        </div>
+
+        <!-- 使用说明 -->
+        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-lg p-4 mb-6">
+            <div class="flex items-start gap-3">
+                <span class="text-2xl">🎯</span>
+                <div>
+                    <span class="text-blue-800 font-semibold">使用说明：</span>
+                    <div class="text-blue-700 text-sm mt-1">
+                        1. 点击"🎤 开始语音识别" → 对着麦克风说话<br>
+                        2. 说完后点击"⏹️ 停止识别" → 文字自动显示<br>
+                        3. 点击"🚀 智能分析会议" → 生成总结、行动项、邮件<br>
+                        4. 历史记录支持单独删除或一键清空
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid lg:grid-cols-2 gap-6">
+            <!-- 左侧：语音识别区域 -->
+            <div class="space-y-6">
+                <!-- 语音识别卡片 -->
+                <div class="bg-white rounded-lg shadow-lg p-6">
+                    <h2 class="text-lg font-semibold mb-3">🎤 实时语音识别</h2>
+                    
+                    <div class="bg-gradient-to-r from-blue-50 to-cyan-50 rounded-xl p-5">
+                        <div class="flex flex-wrap gap-3 mb-4">
+                            <button id="startListenBtn" onclick="startListening()" class="px-6 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 flex items-center gap-2 font-medium shadow-md transition">
+                                <i class="fas fa-microphone"></i> 开始语音识别
+                            </button>
+                            <button id="stopListenBtn" onclick="stopListening()" disabled class="px-6 py-3 bg-gray-400 text-white rounded-xl cursor-not-allowed flex items-center gap-2 font-medium shadow-md transition">
+                                <i class="fas fa-stop"></i> 停止识别
+                            </button>
+                            <button onclick="clearText()" class="px-4 py-3 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition flex items-center gap-2">
+                                <i class="fas fa-trash"></i> 清空
+                            </button>
+                        </div>
+                        
+                        <div id="statusArea" class="bg-white rounded-lg p-3 mb-3">
+                            <div class="flex items-center justify-between">
+                                <div class="flex items-center gap-2">
+                                    <div id="statusDot" class="w-3 h-3 bg-gray-400 rounded-full"></div>
+                                    <span id="statusText" class="text-sm text-gray-600">⚪ 未开始</span>
+                                </div>
+                                <div id="recognizedWords" class="text-xs text-gray-400">0 字</div>
+                            </div>
+                        </div>
+                        
+                        <div class="text-xs text-gray-500 flex items-center gap-4">
+                            <span><i class="fas fa-microphone-alt"></i> 支持中文识别</span>
+                            <span><i class="fas fa-infinity"></i> 可长时间连续识别</span>
+                            <span><i class="fas fa-chrome"></i> 推荐Chrome浏览器</span>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-5">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="font-medium text-gray-700">📝 会议转写文本</label>
+                            <button onclick="copyTranscribedText()" class="text-sm bg-gray-100 text-gray-600 px-3 py-1 rounded-lg hover:bg-gray-200 transition">
+                                <i class="fas fa-copy"></i> 复制
+                            </button>
+                        </div>
+                        <textarea id="transcribedText" rows="10" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm" placeholder="点击'开始语音识别'后，对着麦克风说话，文字会实时显示在这里..."></textarea>
+                    </div>
+                </div>
+                
+                <!-- 会议记录编辑 -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold mb-3">✏️ 编辑会议记录</h2>
+                    <textarea id="meetingText" rows="6" class="w-full border border-gray-300 rounded-xl p-3 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm" placeholder="可以在这里修改或补充会议记录..."></textarea>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="syncText()" class="flex-1 px-4 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 transition">
+                            📋 同步转写内容
+                        </button>
+                        <button onclick="loadExample()" class="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-xl hover:bg-gray-300 transition">
+                            示例数据
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 历史记录 - 带删除功能 -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold">📚 历史会议</h2>
+                        <button onclick="clearAllHistory()" id="clearAllHistoryBtn" class="text-sm bg-red-100 text-red-600 px-3 py-1 rounded-lg hover:bg-red-200 transition flex items-center gap-1">
+                            <i class="fas fa-trash-alt"></i> 清空全部
+                        </button>
+                    </div>
+                    <div id="historyList" class="space-y-2 max-h-48 overflow-y-auto">
+                        <p class="text-gray-400 text-sm text-center py-4">暂无历史记录</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：AI分析区域 -->
+            <div class="space-y-6">
+                <div class="bg-white rounded-lg shadow p-6">
+                    <div class="flex justify-between items-center mb-3">
+                        <h2 class="text-lg font-semibold">📌 会议总结</h2>
+                        <button onclick="processWithLocalAI()" id="processBtn" class="px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition text-sm flex items-center gap-2">
+                            <i class="fas fa-robot"></i> 智能分析
+                        </button>
+                    </div>
+                    <div id="summary" class="prose max-w-none text-gray-700 text-sm leading-relaxed bg-gray-50 p-4 rounded-lg min-h-[100px]">
+                        等待分析...
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold mb-3">⚖️ 决策 & 风险</h2>
+                    <div id="decisions" class="bg-gray-50 p-4 rounded-lg min-h-[100px] text-sm">
+                        等待分析...
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold mb-3">✅ 行动项</h2>
+                    <div id="actions" class="space-y-2 max-h-64 overflow-y-auto">
+                        <p class="text-gray-400 text-sm text-center py-4">等待分析...</p>
+                    </div>
+                    <div class="flex gap-2 mt-4 pt-4 border-t">
+                        <button onclick="exportTasks()" class="flex-1 px-3 py-2 bg-purple-600 text-white rounded-xl hover:bg-purple-700 text-sm transition">
+                            📋 复制任务
+                        </button>
+                        <button onclick="exportToJira()" class="flex-1 px-3 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 text-sm transition">
+                            🔷 Jira格式
+                        </button>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-semibold mb-3">📧 跟进邮件</h2>
+                    <div id="email" class="bg-gray-50 p-4 rounded-xl text-sm font-mono whitespace-pre-wrap min-h-[150px] max-h-48 overflow-y-auto">
+                        等待生成...
+                    </div>
+                    <div class="flex gap-2 mt-4">
+                        <button onclick="copyEmail()" class="flex-1 px-3 py-2 bg-green-600 text-white rounded-xl hover:bg-green-700 text-sm transition">
+                            📋 复制邮件
+                        </button>
+                        <button onclick="sendEmail()" class="flex-1 px-3 py-2 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 text-sm transition">
+                            ✉️ 发送邮件
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============ 产品设计思考区域 ============ -->
+        <div class="mt-10 product-thinking rounded-2xl overflow-hidden shadow-xl">
+            <div class="bg-gradient-to-r from-indigo-900 to-purple-900 px-6 py-4 border-b border-indigo-700">
+                <div class="flex items-center gap-2">
+                    <i class="fas fa-lightbulb text-yellow-400 text-xl"></i>
+                    <h2 class="text-xl font-bold text-white">Product Design Thinking</h2>
+                    <span class="ml-2 text-xs bg-indigo-700 text-indigo-200 px-2 py-1 rounded-full">Design Philosophy</span>
+                </div>
+            </div>
+            
+            <div class="p-6 bg-white/10 backdrop-blur-sm">
+                <!-- Problem & Insight -->
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
+                    <div class="insight-card bg-white/5 rounded-xl p-5 border border-indigo-500/20 hover:bg-white/10 transition">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i class="fas fa-exclamation-triangle text-orange-400 text-lg"></i>
+                            <h3 class="font-semibold text-indigo-200">Problem</h3>
+                        </div>
+                        <p class="text-gray-300 text-sm leading-relaxed">
+                            Meetings generate valuable insights but consistently <span class="text-orange-300 font-medium">fail at execution</span>. 
+                            The disconnect between discussion and action leads to lost opportunities and stalled projects.
+                        </p>
+                    </div>
+                    
+                    <div class="insight-card bg-white/5 rounded-xl p-5 border border-indigo-500/20 hover:bg-white/10 transition">
+                        <div class="flex items-center gap-2 mb-3">
+                            <i class="fas fa-lightbulb text-yellow-400 text-lg"></i>
+                            <h3 class="font-semibold text-indigo-200">Insight</h3>
+                        </div>
+                        <p class="text-gray-300 text-sm leading-relaxed">
+                            The gap is <span class="text-yellow-300 font-medium">not summarization</span>, but a lack of structured follow-through. 
+                            Most tools stop at notes — we need to bridge the chasm between conversation and completion.
+                        </p>
+                    </div>
+                </div>
+                
+                <!-- Solution -->
+                <div class="insight-card bg-gradient-to-r from-blue-600/20 to-purple-600/20 rounded-xl p-5 mb-8 border border-blue-500/30">
+                    <div class="flex items-center gap-2 mb-3">
+                        <i class="fas fa-rocket text-green-400 text-lg"></i>
+                        <h3 class="font-semibold text-green-300">Solution</h3>
+                    </div>
+                    <p class="text-gray-200 text-sm leading-relaxed">
+                        Designed an <span class="text-green-300 font-medium">agent-based workflow</span> connecting meeting → execution. 
+                        From voice to action items, from decisions to follow-ups — creating a complete闭环 that ensures 
+                        nothing falls through the cracks.
+                    </p>
+                </div>
+                
+                <!-- Key Tradeoffs -->
+                <div class="mb-8">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-balance-scale text-purple-400 text-lg"></i>
+                        <h3 class="font-semibold text-purple-300">Key Tradeoffs</h3>
+                    </div>
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="bg-white/5 rounded-lg p-4 border border-purple-500/20">
+                            <div class="text-purple-300 text-xs font-semibold mb-2">⚖️ Automation vs Control</div>
+                            <p class="text-gray-400 text-xs leading-relaxed">
+                                Balanced automation with user control by introducing <span class="text-purple-300">editable action items</span>, 
+                                allowing refinement without losing efficiency.
+                            </p>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-4 border border-purple-500/20">
+                            <div class="text-purple-300 text-xs font-semibold mb-2">⚡ Latency vs Completeness</div>
+                            <p class="text-gray-400 text-xs leading-relaxed">
+                                Optimized for speed by limiting summary depth in MVP — <span class="text-purple-300">fast insights over exhaustive detail</span>.
+                            </p>
+                        </div>
+                        <div class="bg-white/5 rounded-lg p-4 border border-purple-500/20">
+                            <div class="text-purple-300 text-xs font-semibold mb-2">🎯 Precision vs Recall</div>
+                            <p class="text-gray-400 text-xs leading-relaxed">
+                                Prioritized <span class="text-purple-300">action item precision over recall</span> to build user trust — 
+                                better to miss one than create noise.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Future Vision -->
+                <div class="mb-6">
+                    <div class="flex items-center gap-2 mb-4">
+                        <i class="fas fa-eye text-cyan-400 text-lg"></i>
+                        <h3 class="font-semibold text-cyan-300">Future Vision</h3>
+                    </div>
+                    <div class="grid md:grid-cols-3 gap-4">
+                        <div class="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-4">
+                            <i class="fas fa-layer-group text-cyan-400 text-sm mb-2 block"></i>
+                            <p class="text-gray-300 text-xs">
+                                Extend to <span class="text-cyan-300">cross-tool agent orchestration</span> — email, calendar, docs
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-4">
+                            <i class="fas fa-robot text-cyan-400 text-sm mb-2 block"></i>
+                            <p class="text-gray-300 text-xs">
+                                Enable <span class="text-cyan-300">proactive AI follow-ups</span> based on task status
+                            </p>
+                        </div>
+                        <div class="bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg p-4">
+                            <i class="fas fa-building text-cyan-400 text-sm mb-2 block"></i>
+                            <p class="text-gray-300 text-xs">
+                                Integrate with <span class="text-cyan-300">enterprise workflows</span> — Jira, Teams, Notion
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Footer quote -->
+                <div class="border-t border-indigo-700/50 pt-4 mt-2 text-center">
+                    <p class="text-indigo-300 text-xs italic">
+                        "From conversation to completion — closing the execution gap, one meeting at a time."
+                    </p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="text-center mt-6 text-xs text-gray-400">
+            <p>AI Meeting Copilot — Open Source | Built with ❤️ for productive meetings</p>
+        </div>
+    </div>
+
+    <script>
+        // ============ 语音识别相关 ============
+        let recognition = null;
+        let isListening = false;
+        let finalTranscript = '';
+        
+        // 全局数据
+        let currentData = {
+            summary: '',
+            decisions: '',
+            actions: [],
+            email: ''
+        };
+
+        // DOM 元素
+        const startBtn = document.getElementById('startListenBtn');
+        const stopBtn = document.getElementById('stopListenBtn');
+        const statusDot = document.getElementById('statusDot');
+        const statusText = document.getElementById('statusText');
+        const transcribedTextarea = document.getElementById('transcribedText');
+        const meetingTextarea = document.getElementById('meetingText');
+        const recognizedWordsSpan = document.getElementById('recognizedWords');
+
+        // 加载历史
+        loadHistory();
+
+        // 检查浏览器支持
+        function checkBrowserSupport() {
+            if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+                showToast('❌ 您的浏览器不支持语音识别，请使用 Chrome 或 Edge 浏览器', 'error');
+                startBtn.disabled = true;
+                return false;
+            }
+            return true;
+        }
+
+        // 开始语音识别
+        function startListening() {
+            if (!checkBrowserSupport()) return;
+            
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            
+            recognition.lang = 'zh-CN';
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.maxAlternatives = 1;
+            
+            recognition.onstart = () => {
+                isListening = true;
+                startBtn.disabled = true;
+                startBtn.classList.add('opacity-50');
+                stopBtn.disabled = false;
+                stopBtn.classList.remove('bg-gray-400');
+                stopBtn.classList.add('bg-red-600', 'hover:bg-red-700');
+                
+                statusDot.className = 'w-3 h-3 bg-red-500 rounded-full listening-active';
+                statusText.innerHTML = '🔴 识别中... 请说话';
+                
+                showToast('🎤 开始识别，请对着麦克风说话', 'success');
+            };
+            
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                
+                for (let i = event.resultIndex; i < event.results.length; i++) {
+                    const transcript = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalTranscript += transcript + '';
+                    } else {
+                        interimTranscript += transcript;
+                    }
+                }
+                
+                transcribedTextarea.value = finalTranscript + interimTranscript;
+                recognizedWordsSpan.textContent = transcribedTextarea.value.length + ' 字';
+                transcribedTextarea.scrollTop = transcribedTextarea.scrollHeight;
+            };
+            
+            recognition.onerror = (event) => {
+                let errorMsg = '';
+                switch(event.error) {
+                    case 'no-speech': errorMsg = '没有检测到语音，请检查麦克风'; break;
+                    case 'audio-capture': errorMsg = '无法获取麦克风，请检查权限'; break;
+                    case 'not-allowed': errorMsg = '麦克风权限被拒绝，请允许后重试'; break;
+                    default: errorMsg = '识别错误: ' + event.error;
+                }
+                showToast(errorMsg, 'error');
+                stopListening();
+            };
+            
+            recognition.onend = () => {
+                if (isListening && finalTranscript) {
+                    showToast('✅ 识别已停止，共识别 ' + finalTranscript.length + ' 字', 'success');
+                }
+                isListening = false;
+            };
+            
+            recognition.start();
+        }
+        
+        function stopListening() {
+            if (recognition && isListening) {
+                recognition.stop();
+                isListening = false;
+                
+                startBtn.disabled = false;
+                startBtn.classList.remove('opacity-50');
+                stopBtn.disabled = true;
+                stopBtn.classList.remove('bg-red-600', 'hover:bg-red-700');
+                stopBtn.classList.add('bg-gray-400');
+                
+                statusDot.className = 'w-3 h-3 bg-green-500 rounded-full';
+                statusText.innerHTML = '✅ 识别已停止';
+                
+                showToast('⏹️ 识别已停止', 'info');
+            }
+        }
+        
+        function clearText() {
+            if (confirm('确定清空所有转写文本吗？')) {
+                finalTranscript = '';
+                transcribedTextarea.value = '';
+                meetingTextarea.value = '';
+                recognizedWordsSpan.textContent = '0 字';
+                showToast('已清空', 'info');
+            }
+        }
+        
+        function syncText() {
+            const text = transcribedTextarea.value;
+            if (text) {
+                meetingTextarea.value = text;
+                showToast('✅ 已同步到会议记录', 'success');
+            } else {
+                showToast('没有内容可同步', 'error');
+            }
+        }
+        
+        function copyTranscribedText() {
+            const text = transcribedTextarea.value;
+            if (text) {
+                navigator.clipboard.writeText(text);
+                showToast('📋 已复制到剪贴板', 'success');
+            } else {
+                showToast('没有内容可复制', 'error');
+            }
+        }
+        
+        // ============ 历史记录管理（带删除功能） ============
+        function saveToHistory(meetingText, result) {
+            const history = JSON.parse(localStorage.getItem('meeting_history_v3') || '[]');
+            history.unshift({
+                id: Date.now(),
+                date: new Date().toLocaleString('zh-CN'),
+                timestamp: Date.now(),
+                preview: meetingText.substring(0, 60) + (meetingText.length > 60 ? '...' : ''),
+                data: result
+            });
+            while (history.length > 20) history.pop();
+            localStorage.setItem('meeting_history_v3', JSON.stringify(history));
+            loadHistory();
+        }
+        
+        function loadHistory() {
+            const history = JSON.parse(localStorage.getItem('meeting_history_v3') || '[]');
+            const container = document.getElementById('historyList');
+            
+            if (history.length === 0) {
+                container.innerHTML = '<p class="text-gray-400 text-sm text-center py-4">📭 暂无历史记录</p>';
+                return;
+            }
+            
+            container.innerHTML = history.map(item => `
+                <div class="history-item border border-gray-200 rounded-lg p-2 hover:bg-gray-50 transition group" data-id="${item.id}">
+                    <div class="flex justify-between items-start">
+                        <div class="flex-1 cursor-pointer" onclick="loadHistoryItem(${item.id})">
+                            <div class="text-xs text-gray-500">${item.date}</div>
+                            <div class="text-sm text-gray-700 truncate">${escapeHtml(item.preview)}</div>
+                        </div>
+                        <button onclick="deleteHistoryItem(${item.id})" class="delete-btn text-red-400 hover:text-red-600 ml-2 p-1 transition" title="删除">
+                            <i class="fas fa-times-circle"></i>
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function loadHistoryItem(id) {
+            const history = JSON.parse(localStorage.getItem('meeting_history_v3') || '[]');
+            const item = history.find(h => h.id === id);
+            if (item && item.data) {
+                currentData = item.data;
+                updateUI();
+                showToast('✅ 已加载历史记录', 'success');
+            }
+        }
+        
+        function deleteHistoryItem(id) {
+            if (confirm('确定要删除这条历史记录吗？')) {
+                let history = JSON.parse(localStorage.getItem('meeting_history_v3') || '[]');
+                history = history.filter(item => item.id !== id);
+                localStorage.setItem('meeting_history_v3', JSON.stringify(history));
+                loadHistory();
+                showToast('🗑️ 已删除历史记录', 'success');
+            }
+        }
+        
+        function clearAllHistory() {
+            if (confirm('⚠️ 确定要删除所有历史记录吗？此操作不可恢复！')) {
+                localStorage.removeItem('meeting_history_v3');
+                loadHistory();
+                showToast('🗑️ 已清空所有历史记录', 'success');
+            }
+        }
+        
+        // ============ AI分析 ============
+        function processWithLocalAI() {
+            let meetingText = meetingTextarea.value.trim();
+            const transcribedText = transcribedTextarea.value.trim();
+            
+            if (!meetingText && transcribedText) {
+                meetingText = transcribedText;
+                meetingTextarea.value = transcribedText;
+            }
+            
+            if (!meetingText) {
+                showToast('请先进行语音识别或输入会议记录', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('processBtn');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<span class="loading"></span> 分析中...';
+            btn.disabled = true;
+
+            setTimeout(() => {
+                const result = localAIAnalysis(meetingText);
+                currentData = result;
+                updateUI();
+                saveToHistory(meetingText, result);
+                showToast('✅ 分析完成！已保存到历史记录', 'success');
+                btn.innerHTML = originalText;
+                btn.disabled = false;
+            }, 600);
+        }
+
+        function localAIAnalysis(text) {
+            const lines = text.split('\n');
+            let summary = generateSummary(text, lines);
+            let decisions = extractDecisions(text, lines);
+            let risks = extractRisks(text, lines);
+            let actions = extractActions(text, lines);
+            let email = generateEmail(summary, actions);
+            
+            return {
+                summary: summary,
+                decisions: decisions + (risks ? '\n\n⚠️ 风险识别：\n' + risks : ''),
+                actions: actions,
+                email: email
+            };
+        }
+        
+        function generateSummary(text, lines) {
+            let summary = '📋 会议总结\n\n';
+            const dateMatch = text.match(/(\d{4}年\d{1,2}月\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}月\d{1,2}日)/);
+            if (dateMatch) summary += `📅 会议时间：${dateMatch[0]}\n`;
+            const peopleMatch = text.match(/参会[人员：:]\s*([^\n]+)/i);
+            if (peopleMatch) summary += `👥 参会人员：${peopleMatch[1]}\n`;
+            summary += '\n📌 核心内容：\n';
+            const sentences = text.split(/[。！？\n]/).filter(s => s.length > 8).slice(0, 5);
+            sentences.forEach(s => summary += `• ${s.trim()}。\n`);
+            if (sentences.length === 0) summary += `• ${text.substring(0, 200)}...\n`;
+            return summary;
+        }
+        
+        function extractDecisions(text, lines) {
+            let decisions = '';
+            const decisionKeywords = ['决策', '决定', '确定', '达成一致', '同意', '通过', '确认'];
+            for (let line of lines) {
+                for (let keyword of decisionKeywords) {
+                    if (line.includes(keyword)) {
+                        decisions += `• ${line.trim()}\n`;
+                        break;
+                    }
+                }
+            }
+            if (!decisions) decisions = '• 会议中未明确记录决策，建议会后确认关键结论\n';
+            return '✅ 关键决策：\n' + decisions;
+        }
+        
+        function extractRisks(text, lines) {
+            let risks = '';
+            const riskKeywords = ['风险', '问题', '延期', '困难', '阻塞', '依赖', '不确定', '挑战'];
+            for (let line of lines) {
+                for (let keyword of riskKeywords) {
+                    if (line.includes(keyword)) {
+                        risks += `• ${line.trim()}\n`;
+                        break;
+                    }
+                }
+            }
+            if (!risks) risks = '• 未识别到明显风险\n';
+            return risks;
+        }
+        
+        function extractActions(text, lines) {
+            let actions = [];
+            const actionKeywords = ['负责', '完成', '提交', '开发', '测试', '部署', '跟进', '确认', '沟通', '安排', '处理', '协调'];
+            for (let line of lines) {
+                let hasAction = false;
+                for (let keyword of actionKeywords) {
+                    if (line.includes(keyword) && line.length > 5 && line.length < 150) {
+                        hasAction = true;
+                        break;
+                    }
+                }
+                if (hasAction || line.match(/^\d+\./)) {
+                    let owner = '待定';
+                    const ownerMatch = line.match(/([^\s，,、]+)(?:负责|完成|提交|处理|跟进)/);
+                    if (ownerMatch) owner = ownerMatch[1];
+                    let deadline = '待定';
+                    const deadlineMatch = line.match(/(\d{1,2}月\d{1,2}日|\d{4}-\d{1,2}-\d{1,2}|\d+月\d+日前|今天|明天|本周|下周|本月底)/);
+                    if (deadlineMatch) deadline = deadlineMatch[0];
+                    actions.push({
+                        task: line.trim().replace(/^[\d\.\s]+/, ''),
+                        owner: owner,
+                        deadline: deadline
+                    });
+                }
+            }
+            if (actions.length === 0) {
+                actions = [
+                    { task: '整理并发送会议纪要', owner: '会议组织者', deadline: '24小时内' },
+                    { task: '跟进会议讨论的关键事项', owner: '项目负责人', deadline: '本周内' },
+                    { task: '确认下一步行动计划', owner: '全体参会人员', deadline: '下次会议前' }
+                ];
+            }
+            return actions.slice(0, 8);
+        }
+        
+        function generateEmail(summary, actions) {
+            const date = new Date().toLocaleDateString('zh-CN');
+            const time = new Date().toLocaleTimeString('zh-CN');
+            let email = `【会议跟进】${date}\n\n各位好，\n\n感谢参加本次会议。以下是会议纪要和待办事项：\n\n`;
+            email += `${'='.repeat(40)}\n📌 会议总结\n${'='.repeat(40)}\n${summary}\n\n`;
+            email += `${'='.repeat(40)}\n✅ 待办事项\n${'='.repeat(40)}\n`;
+            actions.forEach((action, index) => {
+                email += `${index + 1}. ${action.task}\n   负责人：${action.owner}\n   截止日期：${action.deadline}\n\n`;
+            });
+            email += `${'='.repeat(40)}\n请各位按时完成相关任务。如有疑问请及时沟通。\n\n---\n此邮件由 AI Meeting Copilot 自动生成\n${date} ${time}`;
+            return email;
+        }
+        
+        function updateUI() {
+            document.getElementById('summary').innerHTML = marked.parse(currentData.summary || '暂无总结');
+            document.getElementById('decisions').innerHTML = marked.parse(currentData.decisions || '暂无决策');
+            
+            if (currentData.actions && currentData.actions.length > 0) {
+                let actionsHtml = '';
+                currentData.actions.forEach((action, index) => {
+                    actionsHtml += `
+                        <div class="border border-gray-200 rounded-lg p-3 hover:bg-gray-50 transition">
+                            <div class="flex items-start justify-between">
+                                <div class="flex-1">
+                                    <div class="font-medium text-gray-900">${escapeHtml(action.task)}</div>
+                                    <div class="flex gap-4 mt-1 text-sm text-gray-500">
+                                        <span><i class="fas fa-user"></i> ${escapeHtml(action.owner || '待定')}</span>
+                                        <span><i class="fas fa-calendar"></i> ${escapeHtml(action.deadline || '待定')}</span>
+                                    </div>
+                                </div>
+                                <input type="checkbox" class="mt-1 w-4 h-4 text-blue-600 rounded" onchange="showToast('✅ 任务已标记', 'success')">
+                            </div>
+                        </div>
+                    `;
+                });
+                document.getElementById('actions').innerHTML = actionsHtml;
+            } else {
+                document.getElementById('actions').innerHTML = '<p class="text-gray-400 text-sm text-center py-4">暂无行动项</p>';
+            }
+            document.getElementById('email').innerText = currentData.email || '暂无邮件内容';
+        }
+        
+        function exportTasks() {
+            if (!currentData.actions || currentData.actions.length === 0) {
+                showToast('没有行动项可导出', 'error');
+                return;
+            }
+            const tasks = currentData.actions.map(a => `□ ${a.task} (负责人：${a.owner}，截止：${a.deadline})`).join('\n');
+            navigator.clipboard.writeText(tasks);
+            showToast('✅ 任务清单已复制', 'success');
+        }
+        
+        function exportToJira() {
+            if (!currentData.actions || currentData.actions.length === 0) {
+                showToast('没有行动项可导出', 'error');
+                return;
+            }
+            const jiraFormat = currentData.actions.map(a => `- [ ] ${a.task} // 负责人: ${a.owner} // 截止: ${a.deadline}`).join('\n');
+            navigator.clipboard.writeText(jiraFormat);
+            showToast('✅ Jira格式已复制', 'success');
+        }
+        
+        function copyEmail() {
+            if (!currentData.email) {
+                showToast('没有邮件内容', 'error');
+                return;
+            }
+            navigator.clipboard.writeText(currentData.email);
+            showToast('📋 邮件已复制', 'success');
+        }
+        
+        function sendEmail() {
+            if (!currentData.email) {
+                showToast('没有邮件内容', 'error');
+                return;
+            }
+            window.location.href = `mailto:?subject=会议跟进&body=${encodeURIComponent(currentData.email)}`;
+        }
+        
+        function loadExample() {
+            const example = `产品迭代周会 - 2025年4月2日
+
+参会人员：张明（产品经理）、李华（前端开发）、王芳（后端开发）、赵磊（测试）
+
+讨论内容：
+1. 移动端3.0版本开发进度 - 前端已完成80%，后端完成70%
+2. 性能优化问题 - 首页加载速度当前2.5秒，目标1.5秒
+3. 测试环境不稳定，需要运维支持
+
+决策：
+- 4月10日发布Beta版本给测试团队
+- 正式版本延期到4月25日上线
+
+风险：
+- 第三方支付SDK审核需要5个工作日
+- 服务器扩容申请尚未批准
+
+行动项：
+1. 李华负责完成登录页面开发，4月5日前完成
+2. 王芳负责完成订单接口开发，4月6日前完成
+3. 赵磊负责提交服务器扩容申请，今天下班前完成
+4. 张明负责跟进支付SDK审核进度`;
+
+            meetingTextarea.value = example;
+            showToast('示例数据已加载，点击"智能分析"开始', 'success');
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function showToast(message, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.innerHTML = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2500);
+        }
+        
+        // 导出全局函数
+        window.startListening = startListening;
+        window.stopListening = stopListening;
+        window.clearText = clearText;
+        window.syncText = syncText;
+        window.copyTranscribedText = copyTranscribedText;
+        window.processWithLocalAI = processWithLocalAI;
+        window.exportTasks = exportTasks;
+        window.exportToJira = exportToJira;
+        window.copyEmail = copyEmail;
+        window.sendEmail = sendEmail;
+        window.loadExample = loadExample;
+        window.loadHistoryItem = loadHistoryItem;
+        window.deleteHistoryItem = deleteHistoryItem;
+        window.clearAllHistory = clearAllHistory;
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+</body>
+</html>
